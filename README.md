@@ -1,5 +1,20 @@
 📁 This project focuses on developing a folder synchronization program in Python to ensure an identical copy of the source folder is maintained in the replica folder.
 
+
+#
+### Getting Started:
+
+To prepare your working derictory clone this derictory
+
+```
+git clone https://github.com/kingoker/folder_backup.git .
+```
+Launch the program
+
+```
+python3 synchronization.py
+```
+
 #
 ### Features:
 📍 One-Way Synchronization: The program ensures one-way synchronization, modifying the content of the replica folder to precisely match the content of the source folder.
