@@ -4,111 +4,105 @@ import shutil
 import time
 
 
-# compare files
 def are_files_equal(file1, file2):
     with open(file1, 'rb') as f1, open(file2, 'rb') as f2:
         return f1.read() == f2.read()
 
 
-# synchronize function
-def synchronize(source_folder_path, replica_folder_path):
+def synchronize(source_folder_path, replica_folder_path, indent=''):
     try:
-        source_file_list = set(os.listdir(source_folder_path))
-        replica_file_list = set(os.listdir(replica_folder_path))
+        source_items = set(os.listdir(source_folder_path))
+        replica_items = set(os.listdir(replica_folder_path))
 
-        deleted_files = replica_file_list - source_file_list
-        added_files = source_file_list - replica_file_list
-        common_files = source_file_list.intersection(replica_file_list)
+        added_items, deleted_items, changed_items = set(), set(), set()
 
-        # copy new files
-        for file in added_files:
+        for item in source_items - replica_items:  # added_items
+            source_path, replica_path = os.path.join(source_folder_path, item), os.path.join(replica_folder_path, item)
+
             try:
-                shutil.copy(os.path.join(source_folder_path, file), replica_folder_path)
+                added_items.add(item)
+                if os.path.isdir(source_path):
+                    shutil.copytree(source_path, replica_path)
+                else:
+                    shutil.copy(source_path, replica_path)
             except Exception as e:
-                print(f"Error copying file {file}: {e}")
+                print(f"{indent}Error copying {os.path.basename(item)}: {e}")
 
-        # remove deleted files
-        for file in deleted_files:
+        for item in replica_items - source_items:  # deleted_items
+            item_path = os.path.join(replica_folder_path, item)
+
             try:
-                os.remove(os.path.join(replica_folder_path, file))
+                deleted_items.add(item)
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
             except Exception as e:
-                print(f"Error deleting file {file}: {e}")
+                print(f"{indent}Error deleting {os.path.basename(item)}: {e}")
 
-        # update changed files
-        changed_files = []
-        for file in common_files:
-            source_path = os.path.join(source_folder_path, file)
-            target_path = os.path.join(replica_folder_path, file)
+        for item in source_items.intersection(replica_items):  # common_items
+            source_path, replica_path = os.path.join(source_folder_path, item), os.path.join(replica_folder_path, item)
 
-            if not are_files_equal(source_path, target_path):
-                try:
-                    shutil.copy(source_path, target_path)
-                    changed_files.append(file)
-                except Exception as e:
-                    print(f"Error updating file {file}: {e}")
-        return deleted_files, added_files, changed_files
+            try:
+                if os.path.isdir(source_path):
+                    deleted, added, changed = synchronize(source_path, replica_path, indent + '  ')
+                    deleted_items.update(deleted)
+                    added_items.update(added)
+                    changed_items.update(changed)
+                elif not are_files_equal(source_path, replica_path):
+                    changed_items.add(item)
+                    shutil.copy(source_path, replica_path)
+            except Exception as e:
+                print(f"{indent}Error processing {os.path.basename(item)}: {e}")
+
+        return deleted_items, added_items, changed_items
 
     except Exception as e:
-        print(f"Error during synchronization: {e}")
-        return [], [], []
+        print(f"{indent}Error during synchronization: {e}")
+        return set(), set(), set()
 
 
-# file log function
-def log_changes(formatted_time, deleted_files, added_files, changed_files, source_folder_path, replica_folder_path, log_file_path):
-    with open(log_file_path, 'a') as log_file:
-        log_file.write('##################\n')
-        log_file.write(f'All data successfully synchronized\nSynchronization time: {formatted_time}\n'
-                       f'Source folder: {source_folder_path}\nReplica folder: {replica_folder_path}\n\n'
-                       f'Deleted files: {", ".join(deleted_files) if deleted_files else "None"}\n'
-                       f'Added files: {", ".join(added_files) if added_files else "None"}\n'
-                       f'Changed files: {", ".join(changed_files) if changed_files else "None"}\n'
-                       f'##################\n\n\n')
-
-
-# Inputs validator
 def get_valid_input(prompt, input_type, test_value=None):
     while True:
         user_input = input(prompt) if test_value is None else test_value
         try:
             if input_type == 'folder' and (not os.path.isdir(user_input)):
                 raise ValueError("The specified path is not a valid folder.")
-            
             elif input_type == 'file' and (not os.path.isfile(user_input)):
                 raise ValueError("The specified path is not a valid file.")
-                
             elif input_type == 'number' and (not user_input.isdigit() or int(user_input) <= 0):
                 raise ValueError("Please enter a valid numeric value.")
             elif input_type == 'number':
                 return int(user_input)
-            
             return user_input
         except ValueError as e:
             print(f"Error: {e}")
 
 
-# Input parameters
+def changes_info(formatted_time, deleted_items, added_items, changed_items, source_folder_path, replica_folder_path, log_file_path, indent=''):
+    with open(log_file_path, 'a') as log_file:
+        log_content = (
+            f'{indent}##################\n\n'
+            f'{indent}All data successfully synchronized\n{indent}Synchronization time: {formatted_time}\n'
+            f'{indent}Source folder: {source_folder_path}\n{indent}Replica folder: {replica_folder_path}\n\n'
+            f'{indent}Deleted: {", ".join(deleted_items) if deleted_items else "None"}\n'
+            f'{indent}Added: {", ".join(added_items) if added_items else "None"}\n'
+            f'{indent}Changed: {", ".join(changed_items) if changed_items else "None"}\n'
+            f'\n{indent}##################\n\n\n'
+        )
+        log_file.write(log_content)
+        print(log_content)
+
+
+
 if __name__ == "__main__":
-    source_folder_path = get_valid_input('\nPlease enter the full path to the source folder: ', input_type='folder')
-    replica_folder_path = get_valid_input('\nPlease enter the full path to the replica folder: ', input_type='folder')
-    log_file_path = get_valid_input('\nPlease enter the full path to the file where entered changes will be recorded: ', input_type='file')
+    source_folder_path = get_valid_input('\nPlease enter the full path to the SOURCE folder: ', input_type='folder')
+    replica_folder_path = get_valid_input('\nPlease enter the full path to the REPLICA folder: ', input_type='folder')
+    log_file_path = get_valid_input('\nPlease enter the full path to LOG file: ', input_type='file')
     time_interval_minute = get_valid_input('\nPlease enter the synchronization interval in minutes: ', input_type='number')
-
-    try:
-        while True:
-            deleted_files, added_files, changed_files = synchronize(source_folder_path, replica_folder_path)
-            formatted_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-
-            print('\n\n##################\n')
-            print(f'All data successfully synchronized\n'
-                    f'Synchronization time: {formatted_time}\n'
-                    f'Source folder: {source_folder_path}\nReplica folder: {replica_folder_path}\n\n'
-                    f'Deleted files: {", ".join(deleted_files) if deleted_files else "None"}\n'
-                    f'Added files: {", ".join(added_files) if added_files else "None"}\n'
-                    f'Changed files: {", ".join(changed_files) if changed_files else "None"}\n'
-                    f'\n##################\n\n')
-
-            log_changes(formatted_time, deleted_files, added_files, changed_files, source_folder_path, replica_folder_path, log_file_path)
-            time.sleep(time_interval_minute * 60)
-
-    except KeyboardInterrupt:
-        print("\nThe program has been terminated.\n")
+    
+    while True:
+        deleted_items, added_items, changed_items = synchronize(source_folder_path, replica_folder_path)
+        formatted_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        changes_info(formatted_time, deleted_items, added_items, changed_items, source_folder_path, replica_folder_path, log_file_path, indent='')
+        time.sleep(time_interval_minute * 60)
